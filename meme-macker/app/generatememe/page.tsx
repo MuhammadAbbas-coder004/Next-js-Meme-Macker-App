@@ -1,88 +1,156 @@
-// app/generatememe/page.tsx
-"use client";
+'use client';
 
-import Image from "next/image";
-import { useSearchParams } from "next/navigation";
-import React, { useState } from "react";
+import React, { useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
-const GenerateMeme = () => {
+function MemeEditorContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
 
-  const url = searchParams.get("url") || "";
-  const boxCount = parseInt(searchParams.get("boxCount") || "2"); // default 2 boxes
+  const initialUrl  = searchParams.get('url')  || '';
+  const initialName = searchParams.get('name') || '';
+  const memeId      = searchParams.get('id')   || '';
+  const boxCount    = parseInt(searchParams.get('boxCount') || searchParams.get('boxes') || '2');
 
-  // Input fields state
-  const [texts, setTexts] = useState<string[]>(Array(boxCount).fill(""));
+  const [texts, setTexts]               = useState<string[]>(Array(boxCount).fill(''));
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [loading, setLoading]           = useState(false);
 
-  // Update input text
-  const handleChange = (i: number, value: string) => {
-    const newTexts = [...texts];
-    newTexts[i] = value;
-    setTexts(newTexts);
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('template_id', memeId);
+    texts.forEach((text) => formData.append('texts', text));
+    try {
+      const response = await fetch('/api/caption', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (data.success) {
+        setGeneratedUrl(data.data.url);
+      } else {
+        alert('Error: ' + (data.error_message || 'Failed to generate meme'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed. Check your .env.local credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const currentDisplayUrl = generatedUrl || initialUrl;
+
   return (
-    <div className="min-h-screen flex flex-col items-center p-6 bg-gray-50">
-      <h1 className="text-2xl md:text-3xl font-bold mb-6 text-center">
-        Create Your Meme
-      </h1>
+    <div className="min-h-screen p-4 md:p-12">
+      <div className="max-w-6xl mx-auto space-y-8">
 
-      {url ? (
-        <div className="relative bg-white rounded-xl shadow-md p-6 w-full max-w-md">
-          {/* Meme Image */}
-          <div className="relative w-full h-64">
-            <Image
-              src={url}
-              alt="meme"
-              fill
-              className="object-cover rounded-md"
-            />
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-sm font-bold opacity-50 hover:opacity-100 transition-opacity"
+        >
+          ← Back to Gallery
+        </button>
 
-            {/* Overlay Texts */}
-            {texts.map((text, i) => (
-              <div
-                key={i}
-                className="absolute left-1/2 text-white font-bold text-lg md:text-xl uppercase px-2 text-center"
-                style={{
-                  top: `${(i + 1) * (64 / (boxCount + 1))}px`, // spread vertically
-                  transform: "translateX(-50%)",
-                  textShadow: "2px 2px 4px rgba(0,0,0,0.7)",
-                }}
-              >
-                {text}
+        <div className="grid lg:grid-cols-2 gap-8 items-start">
+
+          {/* Preview */}
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm relative">
+              <div className="min-h-[300px] flex items-center justify-center bg-slate-50 dark:bg-slate-950 rounded-xl overflow-hidden">
+                {currentDisplayUrl ? (
+                  <img
+                    src={currentDisplayUrl}
+                    alt="Meme Preview"
+                    className="max-w-full max-h-[500px] object-contain"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
+                    <p className="text-xs font-bold opacity-20">LOADING TEMPLATE...</p>
+                  </div>
+                )}
               </div>
-            ))}
+
+              {loading && (
+                <div className="absolute inset-0 bg-black/10 flex items-center justify-center rounded-2xl z-10">
+                  <div className="p-4 rounded-xl bg-white dark:bg-slate-900 shadow-lg flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent animate-spin rounded-full" />
+                    <span className="text-sm font-bold">Creating...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {generatedUrl && (
+              <div className="flex gap-3">
+                <a
+                  href={generatedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-indigo-600 text-white text-center py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors"
+                >
+                  Download
+                </a>
+                <button
+                  onClick={() => setGeneratedUrl(null)}
+                  className="px-6 py-3 rounded-xl border border-slate-200 dark:border-slate-800 font-bold text-sm hover:bg-slate-50 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Input fields */}
-          <div className="mt-4">
-            {texts.map((text, i) => (
-              <input
-                key={i}
-                type="text"
-                placeholder={`Text for box ${i + 1}`}
-                value={text}
-                onChange={(e) => handleChange(i, e.target.value)}
-                className="w-full mb-3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            ))}
+          {/* Form */}
+          <div className="space-y-6">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold">{initialName || 'Create Meme'}</h2>
+              <p className="text-sm opacity-50">Enter text below to generate your meme.</p>
+            </div>
+
+            <form onSubmit={handleGenerate} className="space-y-6">
+              <div className="grid gap-3">
+                {texts.map((text, index) => (
+                  <div key={index} className="space-y-1">
+                    <label className="text-[9px] uppercase tracking-wider font-bold opacity-40">
+                      BOX {index + 1}
+                    </label>
+                    <input
+                      type="text"
+                      value={text}
+                      onChange={(e) => {
+                        const newTexts = [...texts];
+                        newTexts[index] = e.target.value;
+                        setTexts(newTexts);
+                      }}
+                      placeholder={`Text ${index + 1}`}
+                      className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-400 transition-all text-sm"
+                      required
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 rounded-xl bg-indigo-600 text-white font-bold text-base hover:opacity-90 transition-all disabled:opacity-50"
+              >
+                {loading ? 'Generating...' : 'Generate Meme'}
+              </button>
+            </form>
           </div>
 
-          {/* Optional: Save / Generate Button */}
-          <button
-            className="w-full mt-2 bg-indigo-600 text-white py-2.5 rounded-md hover:bg-indigo-700 transition font-medium"
-            onClick={() => alert("This is a live preview. Text is already on image!")}
-          >
-            Done
-          </button>
         </div>
-      ) : (
-        <p className="text-gray-500 mt-4 text-center">
-          No meme selected. Please go back and choose a template.
-        </p>
-      )}
+      </div>
     </div>
   );
-};
+}
 
-export default GenerateMeme;
+export default function GenerateMeme() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <MemeEditorContent />
+    </Suspense>
+  );
+}
